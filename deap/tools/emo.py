@@ -513,6 +513,9 @@ def selNSGA3(individuals, k, ref_points, nd="log", best_point=None,
         Algorithm Using Reference-Point-Based Nondominated Sorting Approach,
         Part I: Solving Problems With Box Constraints. IEEE Transactions on
         Evolutionary Computation, 18(4), 577-601. doi:10.1109/TEVC.2013.2281535.
+
+    Leonidas Zisis modification: If includes ranking identification to individual,
+    it will correspond each individual with a rank. E.g. rank = ind.rank
     """
     if nd == "standard":
         pareto_fronts = sortNondominated(individuals, k)
@@ -540,6 +543,18 @@ def selNSGA3(individuals, k, ref_points, nd="log", best_point=None,
     front_worst = numpy.max(fitnesses[:sum(len(f) for f in pareto_fronts), :], axis=0)
     intercepts = find_intercepts(extreme_points, best_point, worst_point, front_worst)
     niches, dist = associate_to_niche(fitnesses, ref_points, best_point, intercepts)
+
+    # Leonidas Zisis modification
+    # Relate each individual with its rank and nich distance
+    j = 0
+    for i  in range(len(pareto_fronts)):
+        for ind in pareto_fronts[i]:
+            # First and best rank is the rank 0
+            ind.rank = i
+            # Keep niches and dist for every individual
+            ind.nich = niches[j]
+            ind.nich_dist = dist[j]
+            j += 1
 
     # Get counts per niche for individuals in all front but the last
     niche_counts = numpy.zeros(len(ref_points), dtype=numpy.int64)
@@ -593,7 +608,7 @@ def find_intercepts(extreme_points, best_point, current_worst, front_worst):
         if numpy.count_nonzero(x) != len(x):
             intercepts = front_worst
         else:
-            intercepts = 1 / x
+            intercepts = 1.0 / x
 
             if (not numpy.allclose(numpy.dot(A, x), b) or
                     numpy.any(intercepts <= 1e-6) or
@@ -682,6 +697,47 @@ def uniform_reference_points(nobj, p=4, scaling=None):
         ref_points += (1 - scaling) / nobj
 
     return ref_points
+
+###################################################################
+# Universal Non-Dominated Sorting  (U-NSGA-III) by Leonidas Zisis #
+###################################################################
+
+def niching_selection_UNSGA3(population):
+    """ Leonidas modification to implement U-NSGA-III, as in paper:
+    https://link.springer.com/chapter/10.1007/978-3-319-15892-1_3
+
+    Niching-based selection of U-NSGA-III: 
+    """
+
+    # Niching-based selection of U-NSGA-III:
+    selected = []
+    # This will be false when generation = 0 since the first individual
+    # of the population, (and the rest of them), won't have any rank
+    if not(population[0].rank==None):
+
+        # redo for two times to have complete number of population
+        while len(selected)<len(population):
+
+            for i in range(1, len(population), 2):
+                if population[i-1].nich == population[i].nich:
+                    if population[i-1].rank < population[i].rank:
+                        ps = population[i-1]
+                    elif population[i].rank < population[i-1].rank:
+                        ps = population[i]
+                    elif population[i-1].nich_dist < population[i].nich_dist:
+                        ps = population[i-1]
+                    else:
+                        ps = population[i]
+                else:
+                    ps = random.choice([population[i], population[i-1]])
+
+                selected.append(ps)
+
+            population = random.sample(population, len(population))
+    else:
+        selected = population
+
+    return selected
 
 
 ######################################
@@ -841,5 +897,5 @@ def _partition(array, begin, end):
             return j
 
 
-__all__ = ['selNSGA2', 'selNSGA3', 'selNSGA3WithMemory', 'selSPEA2', 'sortNondominated', 'sortLogNondominated',
+__all__ = ['selNSGA2', 'selNSGA3', 'selNSGA3WithMemory', 'niching_selection_UNSGA3', 'selSPEA2', 'sortNondominated', 'sortLogNondominated',
            'selTournamentDCD', 'uniform_reference_points']
